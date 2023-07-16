@@ -130,3 +130,4 @@ dmypy.json
 
 *.zip
 mlpack-4.0.1/*
+example/*
