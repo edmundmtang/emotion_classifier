@@ -10,19 +10,65 @@
 #include <vector>
 #include <istream>
 
-std::pair<torch::Tensor, torch::Tensor> preprocess(std::string text, std::map<std::string, int> token2id, int max_length, bool log = false){
-  std::cout << "preprocessing text\n";
-  if (log)
-    std::cout << "logging preprocess\n";
+#include <regex>
+
+
+// See https://github.com/google-research/bert/blob/master/tokenization.py for pytorch's implementation of tokenization in python
+
+std::stringstream split_on_punc(std::string text) {
+    std::cout << "Split on punctuation:\n";
+    std::istringstream input_ss(text);
+    std::string word;
+    std::stringstream output_ss("", std::ios::app | std::ios::out);
+
+    std::regex rgx("[.,\'\"]"); // expecting only basic punctuation
+    std::smatch base_match;
+    while (getline(input_ss, word, ' ')) {
+        bool start_new_word(true);
+        for (char& ch : word) {
+            std::string ch_str(1, ch);
+            if (std::regex_match(ch_str, base_match, rgx)) {
+                output_ss << " ";
+                start_new_word = true;
+            }
+            else {
+                if (start_new_word) {
+                    output_ss << " ";
+                }
+                start_new_word = false;
+            }
+            output_ss << ch;
+        }
+    }
+    
+    std::cout << "\n" << "Input: " << text;
+    std::cout << "\n" << "Output: " << output_ss.str() << "\n";
+
+    return output_ss;
+}
+
+std::pair<torch::Tensor, torch::Tensor> preprocess(std::string text, std::map<std::string, int> token2id, int max_length, bool is_lower = true, bool log = false) {
   std::string pad_token = "[PAD]", start_token = "[CLS]", end_token = "[SEP]";
   int pad_token_id = token2id[pad_token], start_token_id = token2id[start_token], end_token_id = token2id[end_token];
 
   std::vector<int> input_ids(max_length, pad_token_id), masks(max_length, 0);
   input_ids[0] = start_token_id; masks[0] = 1;
 
+  // Assuming text is already in unicode and does not require invalid character removal
+
+  if (!is_lower) {
+      std::cout << "Warning: we're not using all lowercase?\n";
+      // To-do: we'd normally need to convert to lowercase here, but
+      // our input from upstream is lowercase so we'll not bother
+      // To-do: we'd also need to strip accents, but I'm pretty sure
+      // we're not passing words with accents
+  }
+
+  // We do not need to implement a whitespace_tokenize because our
+  // inputs should already have the appropriate whitespacing
+
   std::string word;
   std::istringstream ss(text);
-
   int input_id = 1;
   while(getline(ss, word, ' ')) {
     int word_id = token2id[word];
@@ -35,6 +81,8 @@ std::pair<torch::Tensor, torch::Tensor> preprocess(std::string text, std::map<st
 
   masks[input_id] = 1;
   input_ids[input_id] = end_token_id;
+
+  split_on_punc(text);
 
   if (log){
     for (auto i : input_ids)
@@ -58,9 +106,7 @@ struct Model{
   torch::jit::script::Module bert;
 
   void init_vocab(std::string vocab_path = "bert-based-uncased-vocab.txt"){
-    std::cout << "really init vocab\n";
     std::tie(token2id, id2token) = get_vocab(vocab_path);
-    std::cout << "loaded vocab\n";
   }
 
   std::pair<std::map<std::string, int>, std::map<int, std::string>> get_vocab(std::string vocab_path){
@@ -69,19 +115,16 @@ struct Model{
 
     std::fstream newfile;
 
-    std::cout << "opening file: " << vocab_path << "\n";
-
     newfile.open(vocab_path, std::ios::in);
 
     std::string line;
+    int token_id = 0;
     while (getline(newfile, line)) {
-      //char *token = strtok(const_cast<char*>(line.c_str()), " ");
-      //char *token_id = strtok(nullptr, " ");
+      char *token = strtok(const_cast<char*>(line.c_str()), " ");
 
-      std::cout << line.c_str() << "\n";
-
-      //token2id[token] = std::stoi(token_id);
-      //id2token[std::stoi(token_id)] = token;
+      token2id[token] = token_id;
+      id2token[token_id] = token;
+      token_id++;
     }
     newfile.close();
 
@@ -95,32 +138,19 @@ int main(int argc, const char* argv[]) {
     return -1;
   }
 
-  std::cout << "start text-to-emotion analysis" << std::endl;
+  std::cout << "Start!" << std::endl;
   int seed = 42;
   torch::manual_seed(seed);
   torch::cuda::manual_seed(seed);
 
-  std::cout << "start model\n";
   auto model = Model();
-  std::cout << "init vocab\n";
   model.init_vocab();
 
   auto token2id = model.token2id;
 
   torch::Tensor input_ids, masks;
 
-  std::cout << "generating inputs\n";
-  std::tie(input_ids, masks) = preprocess(argv[1], token2id, model.max_length, true);
-
-  std::cout << argv[1];
-
-  std::cout << "Input ids\n";
-
-  std::cout << input_ids;
-
-  std::cout << "Input masks\n";
-
-  std::cout << masks;
+  std::tie(input_ids, masks) = preprocess(argv[1], token2id, model.max_length, true, true);
 
   std::cout << "Done\n";
 
