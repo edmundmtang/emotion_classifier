@@ -15,11 +15,12 @@
 
 // See https://github.com/google-research/bert/blob/master/tokenization.py for pytorch's implementation of tokenization in python
 
-std::stringstream split_on_punc(std::string text) {
-    std::cout << "Split on punctuation:\n";
+std::stringstream split_on_punc(std::string text, bool log = false) {
+    if (log)
+        std::cout << "Split on punctuation...\n";
     std::istringstream input_ss(text);
     std::string word;
-    std::stringstream output_ss("", std::ios::app | std::ios::out);
+    std::stringstream output_ss("", std::ios::app | std::ios::out | std::ios::in);
 
     std::regex rgx("[.,\'\"]"); // expecting only basic punctuation
     std::smatch base_match;
@@ -40,9 +41,45 @@ std::stringstream split_on_punc(std::string text) {
             output_ss << ch;
         }
     }
-    
-    std::cout << "\n" << "Input: " << text;
-    std::cout << "\n" << "Output: " << output_ss.str() << "\n";
+    if (log) {
+        std::cout << "Input: " << text << "\n";
+        std::cout << "Output: " << output_ss.str() << "\n";
+    }
+    output_ss.ignore(1); //discard leading space
+    return output_ss;
+}
+
+std::stringstream wordpiece_tokenize(std::stringstream& input_ss, std::map<std::string, int> token2id, bool log = false) {
+    if (log)
+        std::cout << "Wordpiece tokenize...\n";
+    std::stringstream output_ss("", std::ios::app | std::ios::out | std::ios::in);
+    std::string token;
+    while (getline(input_ss, token, ' ')) {
+        int start(0);
+        while (start < token.length()) {
+            int end = token.length();
+            int n = end - start;
+            bool is_bad = false;
+            std::string cur_substr("");
+            while (start < end) {
+                std::string substr = token.substr(start, end-start);
+                if (start > 0)
+                    substr = "##" + substr;
+                if (auto search = token2id.find(substr); search != token2id.end()) {
+                    cur_substr = substr;
+                    break;
+                }
+                end--;
+            }
+            if (cur_substr == "")
+            {
+                is_bad = true;
+                break;
+            }
+            std::cout << cur_substr << "\n";
+            start = end;
+        }
+    }
 
     return output_ss;
 }
@@ -68,21 +105,23 @@ std::pair<torch::Tensor, torch::Tensor> preprocess(std::string text, std::map<st
   // inputs should already have the appropriate whitespacing
 
   std::string word;
-  std::istringstream ss(text);
-  int input_id = 1;
-  while(getline(ss, word, ' ')) {
-    int word_id = token2id[word];
-    masks[input_id] = 1;
-    input_ids[input_id++] = word_id;
+  std::stringstream ss("", std::ios::app | std::ios::out | std::ios::in);
+  //int input_id = 1;
+  //while(getline(ss, word, ' ')) {
+  //  int word_id = token2id[word];
+  //  masks[input_id] = 1;
+  //  input_ids[input_id++] = word_id;
 
-    if (log)
-      std::cout << word << " : " << word_id << '\n';
-  }
+  //  if (log)
+  //    std::cout << word << " : " << word_id << '\n';
+  //}
 
-  masks[input_id] = 1;
-  input_ids[input_id] = end_token_id;
+  //masks[input_id] = 1;
+  //input_ids[input_id] = end_token_id;
 
-  split_on_punc(text);
+  ss = split_on_punc(text, log);
+  wordpiece_tokenize(ss, token2id, log);
+
 
   if (log){
     for (auto i : input_ids)
