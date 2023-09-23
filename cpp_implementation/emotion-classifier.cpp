@@ -26,6 +26,8 @@ std::stringstream split_on_punc(std::string text, bool log = false) {
     std::smatch base_match;
     while (getline(input_ss, word, ' ')) {
         bool start_new_word(true);
+        if (output_ss.str() == "")
+            start_new_word = false;
         for (char& ch : word) {
             std::string ch_str(1, ch);
             if (std::regex_match(ch_str, base_match, rgx)) {
@@ -45,21 +47,22 @@ std::stringstream split_on_punc(std::string text, bool log = false) {
         std::cout << "Input: " << text << "\n";
         std::cout << "Output: " << output_ss.str() << "\n";
     }
-    output_ss.ignore(1); //discard leading space
     return output_ss;
 }
 
 std::stringstream wordpiece_tokenize(std::stringstream& input_ss, std::map<std::string, int> token2id, bool log = false) {
     if (log)
         std::cout << "Wordpiece tokenize...\n";
+    std::string unk_token = "[UNK]";
     std::stringstream output_ss("", std::ios::app | std::ios::out | std::ios::in);
     std::string token;
     while (getline(input_ss, token, ' ')) {
         int start(0);
+        bool is_bad = false;
+        std::stringstream subtoken_ss("", std::ios::app | std::ios::out | std::ios::in);
         while (start < token.length()) {
             int end = token.length();
             int n = end - start;
-            bool is_bad = false;
             std::string cur_substr("");
             while (start < end) {
                 std::string substr = token.substr(start, end-start);
@@ -76,11 +79,28 @@ std::stringstream wordpiece_tokenize(std::stringstream& input_ss, std::map<std::
                 is_bad = true;
                 break;
             }
-            std::cout << cur_substr << "\n";
+            if (output_ss.str() == "" && subtoken_ss.str() == "") {
+                subtoken_ss << cur_substr;
+            }
+            else {
+                subtoken_ss << " " << cur_substr;
+            }
             start = end;
         }
+        if (is_bad) {
+            if (output_ss.str() == "") {
+                output_ss << unk_token;
+            }
+            else {
+                output_ss << " " << unk_token;
+            }
+        }
+        else {
+            output_ss << subtoken_ss.str();
+        }
     }
-
+    if (log)
+        std::cout << "Output: " << output_ss.str() << "\n";
     return output_ss;
 }
 
