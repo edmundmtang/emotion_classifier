@@ -132,3 +132,7 @@ dmypy.json
 mlpack-4.0.1/*
 
 model/*
+
+**.pt
+cpp_implementation/.vs/**
+cpp_implementation/out/**
