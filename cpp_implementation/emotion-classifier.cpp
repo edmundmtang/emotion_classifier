@@ -9,9 +9,10 @@
 #include <cstring>
 #include <vector>
 #include <istream>
-
 #include <regex>
+#include <memory>
 
+#include <filesystem>
 
 // See https://github.com/google-research/bert/blob/master/tokenization.py for pytorch's implementation of tokenization in python
 
@@ -153,7 +154,7 @@ std::pair<torch::Tensor, torch::Tensor> preprocess(std::string text, std::map<st
     }
 
     auto input_ids_tensor = torch::tensor(input_ids).unsqueeze(0);
-    auto masks_tensor = torch::tensor(masks).unsqueeze(0).unsqueeze(0);
+    auto masks_tensor = torch::tensor(masks).unsqueeze(0);
     return std::make_pair(input_ids_tensor, masks_tensor);
 }
 
@@ -161,10 +162,15 @@ struct Model{
     int max_length = 256;
     std::map<std::string, int> token2id;
     std::map<int, std::string> id2token;
-    torch::jit::script::Module bert;
+    torch::jit::script::Module module;
 
-    void init_vocab(std::string vocab_path = "bert-based-uncased-vocab.txt"){
+    void init_vocab(std::string vocab_path = "model/vocab.txt") {
         std::tie(token2id, id2token) = get_vocab(vocab_path);
+    }
+
+    void init_module(std::string model_path = "model/traced_model.pt") {
+        module = load_model(model_path);
+        module.eval();
     }
 
     std::pair<std::map<std::string, int>, std::map<int, std::string>> get_vocab(std::string vocab_path){
@@ -172,8 +178,10 @@ struct Model{
     std::map<int, std::string> id2token;
 
     std::fstream newfile;
-
+ 
     newfile.open(vocab_path, std::ios::in);
+    if (newfile.good() == false)
+        std::cout << "Error loading vocabulary\n";
 
     std::string line;
     int token_id = 0;
@@ -188,7 +196,38 @@ struct Model{
 
     return std::make_pair(token2id, id2token);
     }
+
+    torch::jit::script::Module load_model(std::string model_path) {
+        torch::jit::script::Module module;
+        try {
+            std::cout << std::filesystem::current_path() << "\n";
+            //std::cout << "Looking for: " << model_path;
+            //if (std::filesystem::exists(model_path)) {
+            //    std::cout << " --> Exists\n";
+            //}
+            //else {
+            //    std::cout << " --> Does not exist\n";
+            //}
+            module = torch::jit::load(model_path);
+        }
+        catch (const c10::Error& e) {
+            std::cerr << "Error loading model\n";
+        }
+        return module;
+    }
 };
+
+int threshold_softmax(torch::Tensor result_tensor, double threshold, bool log = true) {
+    torch::Tensor softmax_result = torch::softmax(result_tensor, 1);
+    if (log)
+        std::cout << "Softmax result: " << softmax_result << "\n";
+    if (torch::max(softmax_result).item<float>() > threshold) {
+        return torch::argmax(softmax_result).item<int>();
+    }
+    else {
+        return -1;
+    }
+}
 
 int main(int argc, const char* argv[]) {
     if (argc != 2) {
@@ -196,21 +235,38 @@ int main(int argc, const char* argv[]) {
         return -1;
     }
 
-    std::cout << "Start!" << std::endl;
-    int seed = 42;
-    torch::manual_seed(seed);
-    torch::cuda::manual_seed(seed);
+    std::cout << "Start emotion classifier" << std::endl;
+    c10::InferenceMode guard(true);
+    {
+        int seed = 42;
+        torch::manual_seed(seed);
+        torch::cuda::manual_seed(seed);
 
-    auto model = Model();
-    model.init_vocab();
+        auto model = Model();
+        model.init_vocab();
+        model.init_module();
 
-    auto token2id = model.token2id;
+        std::map<std::string, int> token2id = model.token2id;
 
-    torch::Tensor input_ids, masks;
+        torch::Tensor input_ids, masks;
 
-    std::tie(input_ids, masks) = preprocess(argv[1], token2id, model.max_length, true, true);
+        std::tie(input_ids, masks) = preprocess(argv[1], token2id, model.max_length, true, false);
+        std::vector<torch::jit::IValue> inputs;
+        inputs.push_back(input_ids);
+        inputs.push_back(masks);
 
-    std::cout << "Done\n";
+        std::cout << "Now attempting to predict emotion...\n";
+        std::cout << "Inputs: " << input_ids << "\n";
+        torch::IValue output = model.module.forward(inputs);
+        torch::Tensor output_tensor = output.toTuple()->elements()[0].toTensor();
 
+        std::cout << "Raw result: " << output_tensor << "\n";
+
+        int emotion_result = threshold_softmax(output_tensor, 0.8, true);
+
+        std::cout << "Threshold softmax: " << emotion_result << "\n";
+
+        std::cout << "Done!\n";
+    }
     return 0;
 }
