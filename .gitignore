@@ -136,3 +136,5 @@ model/*
 **.pt
 cpp_implementation/.vs/**
 cpp_implementation/out/**
+library_src/.vs/**
+library_src/out/**

@@ -256,7 +256,8 @@ int main(int argc, const char* argv[]) {
         inputs.push_back(masks);
 
         std::cout << "Now attempting to predict emotion...\n";
-        std::cout << "Inputs: " << input_ids << "\n";
+        std::cout << "\nInputs: \n" << input_ids << "\n";
+        std::cout << "\nMasks: \n" << masks << "\n";
         torch::IValue output = model.module.forward(inputs);
         torch::Tensor output_tensor = output.toTuple()->elements()[0].toTensor();
 
