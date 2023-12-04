@@ -56,8 +56,8 @@ std::string Classifier::ProcessText(std::string text) {
 	to token ids. For debugging purposes.*/
 	std::istringstream input_ss(text);
 	std::stringstream ss("", std::ios::app | std::ios::out | std::ios::in);
-	SplitOnPunc();
-	//WordPieceTokenize(ss);
+	ss = SplitOnPunc(input_ss);
+	ss = WordPieceTokenize(ss);
 	return ss.str();
 }
 
@@ -68,8 +68,8 @@ std::pair<torch::Tensor, torch::Tensor> Classifier::PreProcessText(std::istrings
 	typical whitespacing, and doesn't contain accents nor non-
 	English characters.*/
 	std::stringstream ss("", std::ios::app | std::ios::out | std::ios::in);
-	SplitOnPunc();
-	//ss = WordPieceTokenize(ss);
+	ss = SplitOnPunc(input_ss);
+	ss = WordPieceTokenize(ss);
 
 	std::vector<int> input_ids(MAX_LEN, pad_token_id), masks(MAX_LEN, 0);
 	input_ids[0] = start_token_id; masks[0] = 1;
@@ -90,82 +90,82 @@ std::pair<torch::Tensor, torch::Tensor> Classifier::PreProcessText(std::istrings
 	return std::make_pair(input_ids_tensor, masks_tensor);
 }
 
-void Classifier::SplitOnPunc() {
+std::stringstream Classifier::SplitOnPunc(std::istringstream& input_ss) {
 	/*Split words with punctuation in them into separate
 	tokens. Punctuation is treated as its own tokens.*/
-	//std::string word;
-	
-	//std::regex rgx("[.,\'\"]"); // expecting only basic punctuation
-	//std::smatch base_match;
-	//while (getline(input_ss, word, ' ')) {
-	//	bool start_new_word(true);
-	//	if (output_ss.str() == "")
-	//		start_new_word = false;
-	//	for (char& ch : word) {
-	//		std::string ch_str(1, ch);
-	//		if (std::regex_match(ch_str, base_match, rgx)) {
-	//			output_ss << " ";
-	//			start_new_word = true; // there is probably an issue if the first symbol of the entire ss is punctuation
-	//		}
-	//		else {
-	//			if (start_new_word) {
-	//				output_ss << " ";
-	//			}
-	//			start_new_word = false;
-	//		}
-	//		output_ss << ch;
-	//	}
-	//}
-	return;
+	std::string word;
+	std::stringstream output_ss("", std::ios::app | std::ios::out | std::ios::in);
+	std::regex rgx("[.,\'\"]"); // expecting only basic punctuation
+	std::smatch base_match;
+	while (getline(input_ss, word, ' ')) {
+		bool start_new_word(true);
+		if (output_ss.str() == "")
+			start_new_word = false;
+		for (char& ch : word) {
+			std::string ch_str(1, ch);
+			if (std::regex_match(ch_str, base_match, rgx)) {
+				output_ss << " ";
+				start_new_word = true; // there is probably an issue if the first symbol of the entire ss is punctuation
+			}
+			else {
+				if (start_new_word) {
+					output_ss << " ";
+				}
+				start_new_word = false;
+			}
+			output_ss << ch;
+		}
+	}
+	return output_ss;
 }
 
-void Classifier::WordPieceTokenize() {
+std::stringstream Classifier::WordPieceTokenize(std::stringstream& input_ss) {
 	/*Split words into sub tokens. Some words are treated as
 	the compound of multiple tokens.*/
-	//std::stringstream output_ss("", std::ios::app | std::ios::out | std::ios::in);
-	//std::string token;
-	//while (getline(input_ss, token, ' ')) {
-	//	int start(0);
-	//	bool is_bad = false;
-	//	std::stringstream subtoken_ss("", std::ios::app | std::ios::out | std::ios::in);
-	//	while (start < token.length()) {
-	//		int end = token.length();
-	//		std::string cur_substr("");
-	//		while (start < end) {
-	//			std::string substr = token.substr(start, end - start);
-	//			if (start > 0)
-	//				substr = "##" + substr;
-	//			if (auto search = token2id.find(substr); search != token2id.end()) {
-	//				cur_substr = substr;
-	//				break;
-	//			}
-	//			end--;
-	//		}
-	//		if (cur_substr == "") {
-	//			is_bad = true;
-	//			break;
-	//		}
-	//		if (output_ss.str() == "" && subtoken_ss.str() == "") {
-	//			subtoken_ss << cur_substr;
-	//		}
-	//		else {
-	//			subtoken_ss << " " << cur_substr;
-	//		}
-	//		start = end;
-	//	}
-	//	if (is_bad) {
-	//		if (output_ss.str() == "") {
-	//			output_ss << unk_token;
-	//		}
-	//		else {
-	//			output_ss << " " << unk_token;
-	//		}
-	//	}
-	//	else {
-	//		output_ss << subtoken_ss.str();
-	//	}
-	//}
-	return;
+	std::stringstream output_ss("", std::ios::app | std::ios::out | std::ios::in);
+	std::string token;
+	while (getline(input_ss, token, ' ')) {
+		int start(0);
+		bool is_bad = false;
+		std::stringstream subtoken_ss("", std::ios::app | std::ios::out | std::ios::in);
+		while (start < token.length()) {
+			int end = token.length();
+			std::string cur_substr("");
+			while (start < end) {
+				std::string substr = token.substr(start, end - start);
+				if (start > 0)
+					substr = "##" + substr;
+				if (auto search = token2id.find(substr); search != token2id.end()) {
+					cur_substr = substr;
+					break;
+				}
+				end--;
+			}
+			if (cur_substr == "") {
+				is_bad = true;
+				break;
+			}
+			if (output_ss.str() == "" && subtoken_ss.str() == "") {
+				subtoken_ss << cur_substr;
+			}
+			else {
+				subtoken_ss << " " << cur_substr;
+			}
+			start = end;
+		}
+		if (is_bad) {
+			if (output_ss.str() == "") {
+				output_ss << unk_token;
+			}
+			else {
+				output_ss << " " << unk_token;
+			}
+		}
+		else {
+			output_ss << subtoken_ss.str();
+		}
+	}
+	return output_ss;
 }
 
 int Classifier::ClassifyText(std::string text) {

@@ -28,8 +28,8 @@ class Classifier {
 		void LoadVocab(std::string vocab_path);
 		
 		std::pair<torch::Tensor, torch::Tensor> PreProcessText(std::istringstream input_ss);
-		void SplitOnPunc();
-		void WordPieceTokenize();
+		std::stringstream SplitOnPunc(std::istringstream& input_ss);
+		std::stringstream WordPieceTokenize(std::stringstream& input_ss);
 
 		int PostProcessResult(torch::IValue result);
 		int ThresholdSoftmax(torch::Tensor result);
